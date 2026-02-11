@@ -14,6 +14,7 @@
 
 /.cache/
 /.vscode
+/.pixi
 /build
 /openarm-can-*.tar.gz
 /packages/apt/build.sh

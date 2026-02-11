@@ -1,0 +1,29 @@
+[workspace]
+name = "openarm_can"
+version = "1.2.6"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+
+[dependencies]
+python = ">=3.10"
+cmake = ">=3.22"
+ninja = "*"
+pkg-config = "*"
+pip = "*"
+
+[target.linux-64.dependencies]
+gxx_linux-64 = "*"
+gcc_linux-64 = "*"
+
+[target.linux-aarch64.dependencies]
+gxx_linux-aarch64 = "*"
+gcc_linux-aarch64 = "*"
+
+[pypi-dependencies]
+nanobind = ">=2.10.2"
+scikit-build-core = "*"
+
+[tasks]
+build-cpp = "cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX && cmake --build build --target install"
+build-py = { cmd = "python -m pip install --no-build-isolation -e ./python", depends-on = ["build-cpp"] }
+setup = { depends-on = ["build-py"] }
