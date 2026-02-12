@@ -122,7 +122,7 @@ def _run_waist_sequence(openarm, waist):
     # Step 2: Yaw to negative limit (0 degrees)
     print("[INFO] Moving yaw to negative limit (0°)...")
     d_yaw = bump_to_limit(openarm, waist, WaistJointID.YAW,
-                         step_deg=-0.2)
+                         step_deg=-0.1, kp=5, kd=0.1)
     time.sleep(0.5)
 
     ideal = {
@@ -144,29 +144,25 @@ def main():
 
     # Init waist motors
     openarm = oa.OpenArm(args.canport, True)
-    # openarm.init_arm_motors(
-    #     [oa.MotorType.DM8009, oa.MotorType.DM10010L],
-    #     [0x09, 0x0A],
-    #     [0x19, 0x1A]
-    # )
     openarm.init_arm_motors(
-        [oa.MotorType.DM8009],
-        [0x09],
-        [0x19]
+        [oa.MotorType.DM8009, oa.MotorType.DM10010L],
+        [0x09, 0x0A],
+        [0x19, 0x1A]
     )
+    # openarm.init_arm_motors(
+    #     [oa.MotorType.DM8009],
+    #     [0x09],
+    #     [0x19]
+    # )
 
     print("Enabling waist motors...")
-    openarm.set_callback_mode_all(oa.CallbackMode.PARAM)
     openarm.enable_all()
     time.sleep(0.1)
     openarm.recv_all()
     print("Enabled...")
 
     # Hold current pose (light PD)
-    time.sleep(5)
-    openarm.disable_all()
     openarm.set_callback_mode_all(oa.CallbackMode.STATE)
-    return
 
     openarm.recv_all()
     waist = openarm.get_arm()
