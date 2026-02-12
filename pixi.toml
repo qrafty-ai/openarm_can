@@ -10,6 +10,7 @@ cmake = ">=3.22"
 ninja = "*"
 pkg-config = "*"
 pip = "*"
+numpy = ">=2.4.2,<3"
 
 [target.linux-64.dependencies]
 gxx_linux-64 = "*"
