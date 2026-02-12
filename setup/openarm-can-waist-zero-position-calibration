@@ -93,14 +93,28 @@ def bump_to_limit(openarm, comp, joint_id,
             return float(delta_rad)
 
 
-def calc_delta_to_zero_pos_joint(initial_rad: float,
-                                 ideal_limit_rad: float,
-                                 delta_to_stop_rad: float,
-                                 joint_id: WaistJointID) -> float:
-    """Relative delta from 'hit position' to 'ideal limit', with per-joint sign."""
-    q_hit = initial_rad + delta_to_stop_rad
-    delta_to_ideal = ideal_limit_rad - q_hit
-    return float(JOINT_SIGN.get(joint_id, 1.0) * delta_to_ideal)
+def move_to_abs(openarm, comp, target_q_list, interp_time=2.0):
+    """Move all joints to absolute positions."""
+    motors = comp.get_motors()
+    start_q = [m.get_position() for m in motors]
+
+    n_steps = 500
+    dt = interp_time / n_steps
+
+    for i in range(n_steps + 1):
+        alpha = i / n_steps
+        for idx, m in enumerate(motors):
+            q = start_q[idx] + (target_q_list[idx] - start_q[idx]) * alpha
+            comp.mit_control_one(idx, oa.MITParam(200.0, 3.0, q, 0.0, 0.0))
+        openarm.recv_all()
+        time.sleep(dt)
+
+    # Hold final for a bit
+    for _ in range(50):
+        for idx, m in enumerate(motors):
+            comp.mit_control_one(idx, oa.MITParam(200.0, 3.0, target_q_list[idx], 0.0, 0.0))
+        openarm.recv_all()
+        time.sleep(0.01)
 
 # ---------- Waist calibration sequence ----------
 
@@ -120,9 +134,9 @@ def _run_waist_sequence(openarm, waist):
     time.sleep(0.5)
 
     # Step 2: Yaw to negative limit (0 degrees)
-    print("[INFO] Moving yaw to negative limit (0°)...")
-    d_yaw = bump_to_limit(openarm, waist, WaistJointID.YAW,
-                         step_deg=-0.1, kp=5, kd=0.1)
+    print("[INFO] Assuming current yaw as 0...")
+    # d_yaw = bump_to_limit(openarm, waist, WaistJointID.YAW, step_deg=-0.1, kp=3, kd=0.1)
+    d_yaw = 0.
     time.sleep(0.5)
 
     ideal = {
@@ -182,23 +196,32 @@ def main():
         # Run waist calibration sequence
         ideal, deltas = _run_waist_sequence(openarm, waist)
 
-        # Compute ideal deltas per joint
-        joint_order = [WaistJointID.YAW, WaistJointID.PITCH]
-        ideal_delta_map = {}
-        for j, d in zip(joint_order, deltas):
-            val = calc_delta_to_zero_pos_joint(
-                initial_rad=initial_waist_q[int(j)],
-                ideal_limit_rad=ideal[j],
-                delta_to_stop_rad=d,
-                joint_id=j
-            )
-            ideal_delta_map[j] = val
-            print(f"[INFO] ideal[{j.name}] : {val:.6f} rad / {np.rad2deg(val):.2f}°")
+        # Calculate target absolute positions (physical zero)
+        # We are currently at the mechanical limit.
+        # If limit is -10 deg, zero is +10 deg away.
+        # Target = Current - LimitVal
 
-        # Absolute goal = initial + ideal_delta
-        waist_goal_abs = [initial_waist_q[i] +
-                         ideal_delta_map.get(WaistJointID(i), 0.0) for i in range(2)]
-        print(f"[INFO] Waist goal positions (abs): {[np.rad2deg(q) for q in waist_goal_abs]} degrees")
+        current_q = [m.get_position() for m in waist.get_motors()]
+        target_q = []
+
+        # Mapping: 0->Yaw, 1->Pitch based on init order [0x09, 0x0A]
+        for idx in range(2):
+            joint_id = WaistJointID(idx)
+            limit_val = ideal[joint_id]
+            current_val = current_q[idx]
+
+            target_val = current_val - limit_val
+            target_q.append(target_val)
+
+            print(f"[INFO] Joint {joint_id.name}: "
+                  f"HitLimit={np.rad2deg(current_val):.2f}°, "
+                  f"IdealLimit={np.rad2deg(limit_val):.2f}°, "
+                  f"TargetZero={np.rad2deg(target_val):.2f}°")
+
+        # Move to calculated zero position
+        print("[INFO] Moving to physical zero position...")
+        move_to_abs(openarm, waist, target_q, interp_time=3.0)
+        print("[INFO] Reached zero position.")
 
         # Safe disable before writing zeros
         openarm.disable_all()
